@@ -4,6 +4,7 @@
 #####################################################################################
 
 database = "database"
+stardog_uri = "stardog_uri"
 
 split_sys = "split_sys"
 data = "data"
@@ -108,6 +109,8 @@ properties = "properties"
 
 linkset_insert_queries = "linkset_insert_queries"
 triples = "triples"
+subject = "subject"
+predicate = "predicate"
 # Number of triples expected
 expectedTriples = "expectedTriples"
 # Number of duplicates removed

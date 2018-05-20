@@ -512,7 +512,7 @@ def download_data(endpoint, entity_type, graph, directory,  limit, load=False,
         else:
             offset = i * limit + 1
 
-        print "\t\tROUND: {} OFFSET: {}".format(i + 1, offset)
+        print "\t\tROUND: {:9}/{:<9} OFFSET: {:<10}".format(i + 1, iterations, offset)
         current_q = "{} LIMIT {} OFFSET {}".format(main_query, limit, offset)
         # print current_q
         response = Qry.remote_endpoint_request(current_q, endpoint_url=endpoint)
@@ -539,7 +539,7 @@ def download_data(endpoint, entity_type, graph, directory,  limit, load=False,
     b_writer = open(b_file, "wb")
     load_text = """echo "Loading data"
     {}stardog data add {} -g {} "{}/"*.ttl
-    """.format(stardog_path, Svr.DATABASE, graph, directory)
+    """.format(stardog_path, Svr.settings[St.stardog_uri], graph, directory)
     b_writer.write(load_text)
     b_writer.close()
     os.chmod(b_file, 0o777)
@@ -548,7 +548,7 @@ def download_data(endpoint, entity_type, graph, directory,  limit, load=False,
 
         message = "You have just successfully downloaded [{}] triples." \
                   "\n\t{} files where created in the folder [{}] and loaded " \
-                  "into the [{}] dataset. ".format(triples, iterations, directory, Svr.DATABASE)
+                  "into the [{}] dataset. ".format(triples, iterations, directory, Svr.settings[St.database])
     else:
         message = "You have just successfully downloaded [{}] triples." \
                   "\n\t{} files where created in the folder [{}].".format(triples, iterations, directory)
@@ -633,7 +633,7 @@ def download_stardog_data(endpoint, entity_type, graph, directory,  limit, count
         else:
             offset = i * limit + 1
 
-        print "\t\tROUND: {} OFFSET: {}".format(i + 1, offset)
+        print "\t\tROUND: {:10}/{:<10} OFFSET: {:<10}".format(i + 1, iterations, offset)
         current_q = "{} LIMIT {} OFFSET {}".format(main_query, limit, offset)
         # print current_q
         response = Qry.endpointconstruct(current_q, clean=cleanup, insert=insert)
@@ -687,7 +687,7 @@ def download_stardog_data(endpoint, entity_type, graph, directory,  limit, count
         b_writer = open(b_file, "wb")
         load_text = """echo "Loading data"
         {}stardog data add {} -g {} "{}/"*.ttl
-        """.format(stardog_path, Svr.DATABASE, graph, directory)
+        """.format(stardog_path, Svr.settings[St.stardog_uri], graph, directory)
         b_writer.write(load_text)
         b_writer.close()
         os.chmod(b_file, 0o777)
@@ -696,7 +696,7 @@ def download_stardog_data(endpoint, entity_type, graph, directory,  limit, count
 
         message = "You have just successfully downloaded [{}] triples." \
                   "\n\t{} file(s) created in the folder [{}] and loaded " \
-                  "into the [{}] dataset. ".format(triples, iterations, directory, Svr.DATABASE)
+                  "into the [{}] dataset. ".format(triples, iterations, directory, Svr.settings[St.database])
     else:
         message = "You have just successfully downloaded [{}] triples." \
                   "\n\t{} file(s) created in the folder [{}].".format(triples, iterations, directory)
@@ -710,12 +710,14 @@ def download_stardog_data(endpoint, entity_type, graph, directory,  limit, count
 
 def export_research_question(research_question, directory, activated=False):
 
+    print "THE FILE COLD BE FOUND IN {}".format(directory)
+
     if activated is False:
         print "\nTHE FUNCTION [export_research_question] IS NOT ACTIVATED"
         return {St.message: "THE FUNCTION [export_research_question] IS NOT ACTIVATED.", St.result: None}
 
     host = Svr.settings[St.stardog_host_name]
-    endpoint = b"http://{}/annex/{}/sparql/query?".format(host, Svr.DATABASE)
+    endpoint = b"http://{}/annex/{}/sparql/query?".format(host, Svr.settings[St.database])
 
     # **************************************************************
     # 1. DOWNLOAD ALL TRIPLES (metadata) IN THE IDEA GRAPH
@@ -767,7 +769,8 @@ def export_research_question(research_question, directory, activated=False):
     """.format(research_question)
     linksets_response = Qr.sparql_xml_to_matrix(linksets_query)
     linksets = linksets_response[St.result]
-    print "\t There are {} linksets".format(len(linksets) - 1)
+    if linksets:
+        print "\t There are {} linksets".format(len(linksets) - 1)
 
     # **************************************************************
     # 3. GET ALL LENSES CREATED FROM AN ALIGNMENT MAPPING
@@ -789,7 +792,8 @@ def export_research_question(research_question, directory, activated=False):
         """.format(research_question)
     lenses_response = Qr.sparql_xml_to_matrix(lenses_query)
     lenses = lenses_response[St.result]
-    print "\t There are {} lenses".format(len(lenses) - 1)
+    if lenses:
+        print "\t There are {} lenses".format(len(lenses) - 1)
 
     # **************************************************************
     # 4. DOWNLOAD ALL LINKSETS CREATED FROM AN ALIGNMENT MAPPING
@@ -868,7 +872,7 @@ def export_research_question(research_question, directory, activated=False):
     """
 
     print "\n4. DOWNLOADING ALL LINKSETS"
-    if len(linksets) > 1:
+    if linksets and len(linksets) > 1:
         for i in range(1, len(linksets)):
 
             linkset_graph = linksets[i][0]
@@ -941,7 +945,7 @@ def export_research_question(research_question, directory, activated=False):
     """
 
     print "\n5. DOWNLOADING ALL LENSES"
-    if len(lenses) > 1:
+    if lenses and len(lenses) > 1:
         for i in range(1, len(lenses)):
 
             lens_graph = lenses[i][0]
@@ -1162,7 +1166,6 @@ def import_research_question(zip_path, load=False, activated=False):
         read_me_text = read_me.read()
         message.write(read_me_text)
 
-
         message2.write("{}\n".format(">>> DESCRIPTION ON FILES TO LOAD TO THE SERVER\n"))
         message2.write(read_me_text)
         read_me.close()
@@ -1189,7 +1192,8 @@ def import_research_question(zip_path, load=False, activated=False):
         message2.write("THIS EXTENSION [{}] IS NOT SUPPORTED.\n".format(extension[1]))
 
     print message.getvalue()
-    return  {St.message: message2.getvalue(), "sh_bat":bat_path}
+
+    return {St.message: message2.getvalue(), "sh_bat": bat_path}
 
 
 def generate_win_bat_for_rq(directory):
@@ -1208,11 +1212,11 @@ def generate_win_bat_for_rq(directory):
 
                 if files[i].endswith(".trig"):
                     batch.write("""\tcall stardog data add {} "{}" \n\n""".format(
-                        Svr.DATABASE, join(nrm(directory), files[i])))
+                        Svr.settings[St.stardog_uri], join(nrm(directory), files[i])))
 
                 if files[i].endswith(".sparql"):
                     batch.write("""\tcall stardog query {} "{}" \n\n""".format(
-                        Svr.DATABASE, join(nrm(directory), files[i])))
+                        Svr.settings[St.stardog_uri], join(nrm(directory), files[i])))
 
         else:
 
@@ -1226,12 +1230,11 @@ def generate_win_bat_for_rq(directory):
 
                 if files[i].endswith(".trig"):
                     batch.write("""\t{} data add {} "{}"; \n\n""".format(
-                        cmd, Svr.DATABASE, join(nrm(directory), files[i])))
+                        cmd, Svr.settings[St.stardog_uri], join(nrm(directory), files[i])))
 
                 if files[i].endswith(".sparql"):
                     batch.write("""\t{} query {} "{}"; \n\n""".format(
-                        cmd, Svr.DATABASE, join(nrm(directory), files[i])))
-
+                        cmd, Svr.settings[St.stardog_uri], join(nrm(directory), files[i])))
 
     return batch.getvalue()
 

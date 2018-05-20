@@ -337,7 +337,11 @@ def endpoint(query):
         message = err.read()
         if len(message) == 0:
             message = err
-        print "USING THIS QUERY {}\nERROR CODE {}: {}".format(query, err.code, message)
+
+        if str(message).__contains__("Service Unavailable") or str(message).__contains__("Error 503"):
+            print "THE SERVER IS NOT ON"
+        else:
+            print "USING THIS QUERY {}\nERROR CODE {}: {}".format(query, err.code, message)
         return {St.message: message, St.result: None}
 
     except Exception as err:
@@ -670,14 +674,22 @@ def sparql_xml_to_matrix(query):
                 # RECORDS
                 # print "UPDATING MATRIX WITH VARIABLES' VALUES"
                 for result in results:
+
                     # ROWS
                     if variables_size == 1:
                         for key, value in result.items():
                             row += 1
                             for c in range(variables_size):
                                 # print value.items()[1][1]
-                                item = value.items()[1][1]
-                                matrix[row][0] = to_bytes(item)
+
+                                # if type(c) is collections.OrderedDict:
+                                data = value.items()[1][1]
+                                if type(data) is collections.OrderedDict:
+                                    item = data.items()[1][1]
+                                    matrix[row][0] = item
+
+                                else:
+                                    matrix[row][0] = to_bytes(data)
                     else:
                         for key, value in result.items():
                             # COLUMNS
@@ -1068,7 +1080,7 @@ def sparql_xml_to_csv(query="SELECT * {?subject ?predicate ?object } LIMIT 2"):
 def display_result(query, info=None, spacing=50, limit=100, is_activated=False):
 
     if is_activated is False:
-        print "The function is not activated!"
+        print "The function [display_result] is not activated!"
 
     limit = limit
     if info is not None:
@@ -1091,16 +1103,24 @@ def display_result(query, info=None, spacing=50, limit=100, is_activated=False):
             logger.warning("\nTHE MATRIX IS EMPTY\n")
             return None
 
+        static_check = limit and limit > 0
+
         message = """
         ####################################################################################
         TABLE OF {} Row(S) AND {} Columns {}
         LIMIT IS SET TO {} BUT COULD BE CHANGED WITH THE LIMIT PARAMETER.
         ####################################################################################
-         """.format(len(res_matrix) - 1, len(res_matrix[0]), info, limit)
+         """.format(len(res_matrix) - 1, len(res_matrix[0]), info, limit) if static_check is True else """
+        ####################################################################################
+        TABLE OF {} Row(S) AND {} Columns {}
+        NO LIMIT IS SET BUT COULD BE CHANGED WITH THE LIMIT PARAMETER.
+        ####################################################################################
+         """.format(len(res_matrix) - 1, len(res_matrix[0]), info)
 
         print message
 
         count = 0
+
 
         for r in range(len(res_matrix)):
 
@@ -1126,7 +1146,7 @@ def display_result(query, info=None, spacing=50, limit=100, is_activated=False):
 
             print row
 
-            if count == limit + 1:
+            if static_check and count == limit + 1:
                 break
 
 
@@ -1134,6 +1154,12 @@ def display_matrix(matrix, spacing=50, limit=100, output=False, line_feed='.', i
 
     limit = limit
     table = Buffer.StringIO()
+    message = """
+    ####################################################################################
+    TABLE OF {} Row(S) AND {} Columns LIMIT={}
+    ####################################################################################
+         """.format(0, 0, limit)
+
     if is_activated is True:
 
         line = ""
@@ -1146,11 +1172,12 @@ def display_matrix(matrix, spacing=50, limit=100, output=False, line_feed='.', i
 
         if matrix[St.message] == "NO RESPONSE":
             print Ec.ERROR_CODE_1
-            return None
+            return message
 
         if matrix[St.result] is None:
             # logger.warning("\nTHE MATRIX IS EMPTY\n")
-            return None
+            print message
+            return message
 
         message = """
     ####################################################################################
@@ -1188,10 +1215,11 @@ def display_matrix(matrix, spacing=50, limit=100, output=False, line_feed='.', i
             table.write("\n\t{}".format(row))
 
             if count == limit + 1:
-                if output is False:
-                    print table.getvalue()
-                else:
-                    return table.getvalue()
+                # if output is False:
+                #     print table.getvalue()
+                # else:
+                #     return table.getvalue()
+                break
 
     if output is False:
         print table.getvalue()
@@ -3469,3 +3497,4 @@ def remote_stardog(query, endpoints, user, password):
         message = "\nOR MAYBE THERE IS AN ERROR IN THIS QUERY"
         print message + "\n" + query
         return {St.message: err, St.result: None}
+

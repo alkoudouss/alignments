@@ -89,14 +89,15 @@ def to_nt_format(resource):
         return resource
 
 
-
 def is_property_path(resource):
+
     temp = str(to_bytes(resource)).strip()
     check = re.findall("> */ *<", temp)
     return len(check) != 0
 
 
 def get_uri_local_name(uri, sep="_"):
+
     # print "URI: {}".format(uri)
     # print type(uri)
 
@@ -138,6 +139,7 @@ def get_uri_local_name(uri, sep="_"):
 
 
 def get_uri_local_name_plus(uri, sep="_"):
+
     # print "URI: {}".format(uri)
     # print type(uri)
 
@@ -223,7 +225,9 @@ def pipe_split_plus(text, sep="_"):
 
     return altered
 
+
 def get_uri_ns_local_name(uri):
+
     if (uri is None) or (uri == ""):
         return None
 
@@ -406,12 +410,12 @@ def win_bat(file_directory, file_name):
     load_builder.write("""\n\techo "Loading data\"""")
 
     if OPE_SYS == 'windows':
-        load_builder.write("\n\tstardog data add risis")
+        load_builder.write("\n\tstardog data add {} ".format(Svr.settings[St.stardog_uri]))
 
     # if OPE_SYS.__contains__(mac_weird_name):
     else:
         stardog_path = Svr.settings[St.stardog_path]
-        load_builder.write("\n\t{}stardog data add risis".format(stardog_path))
+        load_builder.write("\n\t{}stardog data add {} ".format(stardog_path, Svr.settings[St.stardog_uri]))
 
     # LOAD ONLY .TRIG OR .TTL FILES
     print "\nTHESE FILES WILL BE USED FOR GENERATING A BAT FILE:"
@@ -474,6 +478,7 @@ def batch_load(batch_load_file):
 
 
 def bat_load(bat_path):
+
     try:
 
         if isfile(bat_path) and bat_path.endswith(batch_extension()):
@@ -517,6 +522,7 @@ def bat_load(bat_path):
 
 
 def sh_load(bat_path):
+
     try:
 
         if isfile(bat_path) and bat_path.endswith(batch_extension()):
@@ -902,10 +908,10 @@ def load_triple_store(graph_uri, directory, data):
 
     # GENERATE THE BATCH FILE
     if OPE_SYS == 'windows':
-        b_writer.write("\n\tstardog data add risis {}".format(insert_output))
+        b_writer.write("\n\tstardog data add {} {}".format(Svr.settings[St.stardog_uri], insert_output))
     else:
         stardog_path = Svr.settings[St.stardog_path]
-        b_writer.write("\n\t{}stardog data add risis {}".format(stardog_path, insert_output))
+        b_writer.write("\n\t{}stardog data add {} {}".format(stardog_path, Svr.settings[St.stardog_uri], insert_output))
     b_writer.close()
 
     # SET ACCESS RIGHT
@@ -989,16 +995,19 @@ def stardog_on(bat_path):
             if batch_extension() == ".bat":
 
                 cmd = """
-                @echo STARTING STARDOG...
-                cls
-                cd "{}"
-                START stardog-admin.bat server start
-                """.format(Svr.settings[St.stardog_path])
+    @echo
+    @echo -------------------------------------------------------------------------------------------------
+    @echo STARTING STARDOG FROM {}...
+    @echo -------------------------------------------------------------------------------------------------
+    cls
+    cd "{}"
+    START stardog-admin.bat server start
+                """.format(bat_path, Svr.settings[St.stardog_path])
 
             else:
                 cmd = """
                 echo STARTING STARDOG...
-                "{}"stardog-admin server start
+                "{0}"stardog-admin server start
                 """.format(Svr.settings[St.stardog_path])
 
             writer = open(bat_path, "wb")
@@ -1043,11 +1052,13 @@ def stardog_off(bat_path):
         if batch_extension() == ".bat":
 
             cmd = """
-            @echo STOPPING STARDOG...
-            cls
-            cd "{}"
-            call stardog-admin server stop
-            """.format(Svr.settings[St.stardog_path])
+    @echo -------------------------------------------------------------------------------------------------
+    @echo STOPPING STARDOG FROM{}...
+    @echo -------------------------------------------------------------------------------------------------
+    cls
+    cd "{}"
+    call stardog-admin server stop
+            """.format(bat_path, Svr.settings[St.stardog_path])
 
         else:
 
@@ -1085,6 +1096,25 @@ def stardog_off(bat_path):
     else:
         print ">>> THE SERVER WAS NOT ON."
 
+
+def create_database(stardog_bin_path, db_bat_path, db_name):
+
+    # CREATING THE DATABASE IN STARDOG
+    create_db = """
+    \"{0}\"stardog-admin db create -o spatial.enabled=true search.enabled=true strict.parsing=false -n {1}
+    """.format(stardog_bin_path, db_name)
+
+    writer = open(db_bat_path, "wb")
+    writer.write(create_db)
+    writer.close()
+    os.chmod(db_bat_path, 0o777)
+
+    # subprocess.call(bat_path, shell=True)
+    print "   >>> CREATING THE {} DATABASE".format(db_name)
+    if platform.system().lower() == "windows":
+        os.system(db_bat_path)
+    else:
+        os.system("OPEN -a Terminal.app {}".format(db_bat_path))
 
 def extract_ref(text):
 
@@ -1215,10 +1245,11 @@ def character_mapping(input_text):
     return unidecode(unicode(input_text, encoding="utf-8"))
 
 
-def to_alphanumeric(input_text):
+def to_alphanumeric(input_text, spacing="_"):
+
     if type(input_text) is not unicode:
         input_text = (unicode(input_text, "utf-8"))
-    return re.sub('[\W]', "_", input_text)
+    return re.sub('[\W]', spacing, input_text)
 
 
 def prep_4_uri(input_text):
