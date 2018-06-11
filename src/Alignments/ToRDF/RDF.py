@@ -114,7 +114,9 @@ class RDF(object):
         self.entityType = entity_type
 
         # self.namespace = namespace.replace(" data: ", u" {0}: ".format(entity_type.lower()))
-        self.namespace = namespace.replace(" data: ", u" {0}: ".format("resource"))
+        self.namespace = namespace.replace(" data: ", u" {0}: ".format(
+            "resource" if entity_type is None else entity_type.strip().lower().replace(' ', '_'))
+                                           )
         self.schema = schema
         self.refreshCount = 0
         self.instanceCount = 0

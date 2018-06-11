@@ -40,7 +40,7 @@ constraint_2
 """
 
 _format = "%a, %d %b %Y %H:%M:%S "
-print "\n{:>80}\n".format(datetime.datetime.today().strftime(_format))
+# print "\n{:>80}\n".format(datetime.datetime.today().strftime(_format))
 
 
 # COUNTING THE NUMBER OF TRIPLES INSERTED
@@ -913,9 +913,13 @@ def create_clusters(initial_dataset_uri, property_uri,
     # print "reference_uri:",
 
     if reference_uri:
-        return {St.message: "", "reference": reference_uri, "group_name": group_name}
+        # server_message = "Cluster created as: {}".format(reference_uri)
+        message = "The cluster was created as [{}] with {} clusters!".format(
+            reference_uri, len(constraint_table) - 1)
+        print message
+        return {St.message: message, "reference": reference_uri, "group_name": group_name}
 
-    return {St.message: "", "reference": None, "group_name": group_name}
+    return {St.message: "The cluster could not be created", "reference": None, "group_name": group_name}
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -1588,7 +1592,7 @@ def linkset_from_cluster(specs, cluster_uri, user_label=None, count=1, activated
     print "\t{:20}: {}".format("ENDED ON", datetime.datetime.today().strftime(_format))
     size_after = Qry.get_namedgraph_size("{0}{1}".format(Ns.linkset, label))
     print "\t{:20}: {}".format("LINKSET SIZE AFTER", size_after)
-    print "\t{:20}: {} minute(s) [{}]".format(">>> Executed in", str(diff / 60), diff)
+    print "\t{:20}: {} ".format(">>> Executed in", str(datetime.timedelta(seconds=diff)))
 
     specs[St.triples] = size_after
     return {St.message: "The linkset was created as [{}] and contains {} triples".format(

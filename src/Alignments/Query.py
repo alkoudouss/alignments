@@ -3040,9 +3040,20 @@ def linkset_aligns_prop(linkset_uri, cross_check=False):
     if cross_check is True:
         # read the property for cross checking instead of aligns
         prop_aligns = """
-              {?linkset ll:crossCheckSubject ?s_prop ;
+              { { ?linkset ll:crossCheckSubject ?s_prop ;
                        ll:crossCheckObject ?o_prop .
-                       bind ('True' as ?crossCheck)
+              }
+              union
+              { ?linkset ll:crossCheckSubject ?s_prop ;
+                       ll:alignsObjects ?o_prop .
+                       filter not exists {?linkset ll:crossCheckObject ?o .}
+              }
+              union
+              { ?linkset ll:alignsSubjects ?s_prop ;
+                       ll:crossCheckObject ?o_prop .
+                       filter not exists {?linkset ll:crossCheckSubject ?s .}
+              }
+              bind ('True' as ?crossCheck)
               }
               """
     else:
@@ -3086,10 +3097,13 @@ def linkset_aligns_prop(linkset_uri, cross_check=False):
 
             {{
                 ?linkset ll:alignsSubjects ?s_prop ;
-                        ll:alignsObjects ?o_prop .
+                         ll:alignsObjects ?o_prop .
                 #?graph   ll:alignsSubjects ?s_property.
                 filter not exists {{?linkset ll:alignsSubjects/rdf:rest ?r}}
                 filter not exists {{?linkset ll:alignsObjects/rdf:rest ?r}}
+                filter not exists {{?linkset ll:crossCheckObject ?o }}
+                filter not exists {{?linkset ll:crossCheckSubject ?s }}
+                filter (?s_prop != rdf:type)
                 bind ('False' as ?crossCheck)
             }}
             union
@@ -3103,6 +3117,7 @@ def linkset_aligns_prop(linkset_uri, cross_check=False):
 
         }}
         group by ?s_prop ?o_prop ?s_dataset ?o_dataset ?crossCheck
+        order by DESC(?crossCheck)
     """.format(Ns.alivocab, Ns.prov, Ns.void, linkset_uri, prop_aligns)
     print query
     return query
@@ -3657,7 +3672,7 @@ def countries_geodata(level=2, display=False, activated=False):
 #                         database_name="risis", host="localhost:5820", level=2, display=True, activated=False)
 
 
-def virtuoso_request(query):
+def virtuoso_request(query, endpoint):
 
     """
         param query         : The query that is to be run against the SPARQL endpoint
@@ -3676,7 +3691,7 @@ def virtuoso_request(query):
     # headers = {b"Content-Type": b"application/x-www-form-urlencoded",
     #            b"Authorization": b"Basic YWRtaW46YWRtaW5UMzE0YQ=="}
 
-    url = b"http://sparql.sms.risis.eu/?"
+    url = to_bytes(endpoint)
     # print url
     params = urllib.urlencode(
         {b'query': q, b'default-graph-uri': '', b'format': b'text/turtle',

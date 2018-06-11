@@ -1,5 +1,6 @@
 import logging
 import time
+import datetime
 import Alignments.Query as Qry
 import Alignments.Utility as Ut
 import Alignments.Settings as St
@@ -127,7 +128,7 @@ def spa_linksets(specs, id=False, display=False, activated=False):
             # print metadata
             ls_end = time.time()
             diff = ls_end - ls_start
-            print ">>> Executed in    : {:<14} minute(s) []".format(str(diff/ 60), diff)
+            print ">>> Executed so far in    : {:<14}".format(str(datetime.timedelta(seconds=diff)))
 
             # NO POINT TO CREATE ANY FILE WHEN NO TRIPLE WAS INSERTED
             if int(specs[St.triples]) > 0:
@@ -147,6 +148,11 @@ def spa_linksets(specs, id=False, display=False, activated=False):
                 server_message = "Linksets created as: {}".format(specs[St.linkset])
                 message = "The linkset was created as [{}] with {} triples found!".format(
                     specs[St.linkset], specs[St.triples])
+
+                ls_end_2 = time.time()
+                diff = ls_end_2 - ls_end
+                print ">>> Executed in    : {:<14}".format(str(datetime.timedelta(seconds=diff)))
+                print "\t*** JOB DONE! ***"
                 print "\t", server_message
                 print "\t*** JOB DONE! ***"
 
@@ -761,7 +767,7 @@ def specs_2_linkset_num_approx(specs,  match_numeric=False, display=False, activ
 ########################################################################################
 
 
-def spa_linkset_identity_query(specs):
+def spa_linkset_identity_query_old(specs):
     # Single Predicate Alignment with Exact String Similarity
 
     source = specs[St.source]
@@ -921,6 +927,181 @@ def spa_linkset_identity_query(specs):
     )
 
     queries = [query01, query02, query03, query04]
+    # print query01
+    # print query02
+    # print query03
+
+    return queries
+
+
+def spa_linkset_identity_query(specs):
+    # Single Predicate Alignment with Exact String Similarity
+
+    source = specs[St.source]
+    target = specs[St.target]
+
+    src_aligns = source[St.aligns]\
+        if Ls.nt_format(source[St.aligns]) else "<{}>".format(source[St.aligns])
+
+    trg_aligns = target[St.aligns]\
+        if Ls.nt_format(target[St.aligns]) else "<{}>".format(target[St.aligns])
+
+    """
+        NAMESPACE
+    """
+    prefix = "\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}".format(
+        "##################################################################",
+        "### Linking {{{}}} to {{{}}} based on exact name".format(source[St.graph_name], target[St.graph_name]),
+        "##################################################################",
+        "prefix dataset:    <{}>".format(Ns.dataset),
+        "prefix linkset:    <{}>".format(Ns.linkset),
+        "prefix singleton:  <{}>".format(Ns.singletons),
+        "prefix alivocab:   <{}>".format(Ns.alivocab),
+        "prefix tmpgraph:   <{}>".format(Ns.tmpgraph),
+        "prefix tmpvocab:   <{}>".format(Ns.tmpvocab))
+
+    ''' DROPPING GRAPHS '''
+    drop_tmp = "DROP SILENT GRAPH tmpgraph:load"
+    drop_tmp00 = "DROP SILENT GRAPH tmpgraph:load00"
+    drop_tmp01 = "DROP SILENT GRAPH tmpgraph:load01"
+
+    drop_ls = "DROP SILENT GRAPH linkset:{}".format(specs[St.linkset_name])
+    drop_metadata = "DROP SILENT GRAPH singleton:{}".format(specs[St.linkset_name])
+
+    ''' LOADING SOURCE TO TEMPORARY GRAPH tmpgraph:load00 '''
+    load_temp00 = """
+    INSERT
+    {{
+        GRAPH tmpgraph:load00
+        {{
+            ?source {0} <{1}> .
+        }}
+    }}
+    WHERE
+    {{
+        ### Selecting source data instances based on name
+        GRAPH <{2}>
+        {{
+            ?source {0} <{1}> .
+        }}
+    }}""".format(src_aligns, source[St.entity_datatype], source[St.graph])
+
+    ''' LOADING TARGET TO TEMPORARY GRAPH tmpgraph:load01 '''
+    load_temp01 = """
+    INSERT
+    {{
+       GRAPH tmpgraph:load01
+       {{
+            ?target {0} <{1}> .
+       }}
+    }}
+    WHERE
+    {{
+       ### Selecting target data instances based on name
+       GRAPH <{2}> {{ ?target {0} <{1}> . }}
+    }}""".format(trg_aligns, target[St.entity_datatype], target[St.graph])
+
+    ''' LOADING CORRESPONDENCE TO TEMPORARY GRAPH tmpgraph:load '''
+    load_temp = """
+    INSERT
+    {{
+        GRAPH tmpgraph:load
+        {{
+            ?subject tmpvocab:identical ?subject ;
+                     tmpvocab:evidence  "Identical resource URI ." .
+        }}
+    }}
+    WHERE
+    {{
+        GRAPH tmpgraph:load00 {{ ?subject {} <{}> . }}
+        GRAPH tmpgraph:load01 {{ ?subject {} <{}> . }}
+    }}""".format(src_aligns, source[St.entity_datatype],
+                 trg_aligns, target[St.entity_datatype])
+
+    ''' CREATING THE LINKSET & METADATA GRAPHS lsMetadata '''
+    load_linkset = """
+        INSERT
+        {{
+            GRAPH linkset:{0}
+            {{
+                ### Correspondence triple with singleton
+                ?source ?singPre ?target .
+            }}
+
+            GRAPH singleton:{0}
+            {{
+                ### ### Singleton metadata
+                ?singPre
+                    rdf:singletonPropertyOf     alivocab:exactStrSim{1} ;
+                    alivocab:hasEvidence        ?label .
+            }}
+        }}
+        WHERE
+        {{
+            ### Selecting from tmpgraph:load
+            GRAPH tmpgraph:load
+            {{
+                ?source
+                    tmpvocab:identical ?target ;
+                    tmpvocab:evidence  ?label .
+
+                ### Create A SINGLETON URI"
+                BIND( replace("{2}{3}{4}_#", "#", STRAFTER(str(UUID()),"uuid:")) as ?pre )
+                BIND( iri(?pre) as ?singPre )
+            }}
+        }}""".format(specs[St.linkset_name], specs[St.sameAsCount],
+                     Ns.alivocab, specs[St.mechanism],  specs[St.sameAsCount])
+
+    '''
+        PUTTING IT ALL TOGETHER
+    '''
+    early_drop_query = "{}\n\n{}\n\t{} ;\n\n{}\n\t{} ;\n\n{}\n\t{} ;\n\n{}\n{} ;\n\n{}\n\t{}".format(
+        prefix,
+        "### 1.0 DROP temporary graph",
+        drop_tmp,
+        "### 1.1 DROP SOURCE temporary graph 00",
+        drop_tmp00,
+        "### 1.2 DROP TARGET temporary graph 01",
+        drop_tmp01,
+        "### 1.3 DROP LINKSET graph",
+        drop_ls,
+        "### 1.4 DROP METADATA graph",
+        drop_metadata
+    )
+
+    src_query = "{}\n\n{}\n{}".format(
+        prefix,
+        "### 2.0 INSERT SOURCE into tmpgraph:load00",
+        load_temp00
+    )
+
+    trg_query = "{}\n\n{}\n{} ".format(
+        prefix,
+        "### 2.1 INSERT TARGET into tmpgraph:load01",
+        load_temp01
+    )
+
+    match_query = "{}\n\n{}\n{}".format(
+        prefix,
+        "### 2.3 INSERT CORRESPONDENCE [match] into tmpgraph:load",
+        load_temp,
+    )
+
+    linkset_query = "{}\n\n{}\n{}".format(
+        prefix,
+        "### 3.0 CREATING AND LOADING THE LINKSET AND ITS METADATA",
+        load_linkset,
+    )
+
+    drop_query = "{}\n\n{}\n\t{} ;\n\t{} ;\n\t{}".format(
+        prefix,
+        "### 4.0 DROP temporary graphs",
+        drop_tmp00,
+        drop_tmp01,
+        drop_tmp
+    )
+
+    queries = [early_drop_query, src_query, trg_query, match_query, linkset_query, drop_query]
     # print query01
     # print query02
     # print query03
@@ -2408,7 +2589,7 @@ def geo_specs_2_linkset(specs, activated=False):
 
         message = Ec.ERROR_CODE_4.replace('\n', "<br/>")
         if activated is True:
-
+            ls_start = time.time()
             # REGISTER THE ALIGNMENT
             if check[St.message].__contains__("ALREADY EXISTS"):
                 Urq.register_alignment_mapping(specs, created=False)
@@ -2429,6 +2610,10 @@ def geo_specs_2_linkset(specs, activated=False):
                 specs[St.insert_query] = "{} ;\n{};\n{}".format(
                     geo_query(specs, True), geo_query(specs, False), geo_match_query(specs))
                 # print "INSERT QUERY: {}".format(specs[St.insert_query])
+
+                ls_end = time.time()
+                diff = ls_end - ls_start
+                print ">>> Executed so far in    : {:<14}".format(str(datetime.timedelta(seconds=diff)))
 
                 if specs[St.triples] > 0:
 
@@ -2455,6 +2640,9 @@ def geo_specs_2_linkset(specs, activated=False):
 
                     Urq.register_alignment_mapping(specs, created=True)
 
+                    ls_end_2 = time.time()
+                    diff = ls_end_2 - ls_end
+                    print ">>> Executed in    : {:<14}".format(str(datetime.timedelta(seconds=diff)))
                     print "\t*** JOB DONE! ***"
 
             return {St.message: message, St.error_code: 0, St.result: specs[St.linkset]}

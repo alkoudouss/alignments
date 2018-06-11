@@ -491,6 +491,7 @@ def bat_load(bat_path):
             #   THE FILES THAT WERE ADDED
             #   HOW MANY TRIPLES WHERE ADDED
             output = subprocess.check_output(bat_path, shell=True)
+            # print "SUBPROCESS OUTPUT:", output
             output = re.sub('\(Conversion\).*\n', '', output)
 
             # THE OUTPUT CONTAINS FULL PATH THAT IS NOT ADVISABLE TO DISPLAY
@@ -518,6 +519,7 @@ def bat_load(bat_path):
             return {"message": "OK", "result": output}
 
     except Exception as err:
+        print "SUBPROCESS ERROR"
         return {"message": "CHECK THE FILE PATH.\n{}".format(err.message), "result": None}
 
 
@@ -948,17 +950,19 @@ def listening(directory, sleep_time=10):
         except Exception as err:
             response = str(err)
 
-        if str(response).__contains__("10061"):
+        # print "LISTENER RESPONSE:", response
+        if str(response).__contains__("10061") or str(response).__contains__("61"):
             print "\t>>> The connection has not been established yet with the stardog server..."
 
-        if len(lock_file) > 0 and str(response).__contains__("401"):
-            print "\t>>> THE STARDOG SERVER IS ON AND REQUIRES PASSWORD."
-            return "THE STARDOG SERVER IS ON AND REQUIRES PASSWORD."
+        else:
+            if len(lock_file) > 0 and str(response).__contains__("401"):
+                print "\t>>> THE STARDOG SERVER IS ON AND REQUIRES PASSWORD."
+                return "THE STARDOG SERVER IS ON AND REQUIRES PASSWORD."
 
-        if len(lock_file) > 0 and \
-                (str(response).__contains__("200") or str(response).__contains__("No connection") is False):
-            print "\t>>> >>> THE SERVER IS ON."
-            return "THE SERVER IS ON."
+            if len(lock_file) > 0 and \
+                    (str(response).__contains__("200") or str(response).__contains__("No connection") is False):
+                print "\t>>> THE SERVER IS ON."
+                return "THE SERVER IS ON."
 
         print "\nListening for \"system.lock\" file and checking whether a connection to the server is established..."
         # wait a little bit before getting the next listing
@@ -977,7 +981,7 @@ def stardog_on(bat_path):
     except Exception as err:
         response = str(err)
 
-    print response
+    # print response
 
     # NO NEED FOR TURNING IT ON AS IT IS ALREADY ON
     if len(lock_file) > 0 and (str(response).__contains__("200") or str(response).__contains__("401")):
@@ -1047,6 +1051,7 @@ def stardog_off(bat_path):
 
     directory = Svr.settings[St.stardog_data_path]
 
+    # IF THE STARDOG-STOP FILE DOES NOT EXIST, CREATE IT
     if path.exists(bat_path) is False:
 
         if batch_extension() == ".bat":
@@ -1072,10 +1077,12 @@ def stardog_off(bat_path):
         writer.close()
         os.chmod(bat_path, 0o777)
 
+    # GETTING THE .LOCK FILE. THIS FILES DETERMINES WHETHER STARDOG IS ON OR OFF
     lock_file = [name for name in os.listdir(directory) if name.endswith('.lock')]
 
     if len(lock_file) > 0:
 
+        # STARDOG IS ON SO... RUN THE STOP CODE
         off = batch_load(bat_path)
 
         if off is not None and type(off) is dict:
@@ -1178,18 +1185,24 @@ def export_database(stardog_bin_path, db_name, save_in):
 def check_db_exists(database):
 
     response = Qry.sparql_xml_to_matrix_db(query="SELECT DISTINCT ?s WHERE { ?s ?p ?o } LIMIT 10", database=database)
-    if response["result"] is None:
-        if "justification" in response:
-            justification = response["justification"]
-            if justification.__contains__("UnknownDatabase") is True:
-                print "\nDATABASE [{}] DOES NOT EXIST: ".format(database)
-                return False
-            else:
-                print "\nDATABASE [{}] ALREADY EXIST: ".format(database)
-                return True
+    # print "DB CREATION CHECK:", response
+
+    # if response["result"] is not None:
+    if "justification" in response:
+        justification = response["justification"]
+        if justification.__contains__("UnknownDatabase") is True:
+            print "\n\tDATABASE [{}] DOES NOT EXIST: ".format(database)
+            return False
         else:
-            print "DATABASE [{}] ALREADY EXISTS".format(database)
+            # THE DB EXISTS BUT NOT POPULATED
+            print "\n\tDATABASE [{}] ALREADY EXISTS: ".format(database)
             return True
+    else:
+        # THE DB EXISTS AND IT IS POPULATED
+        print "\n\tDATABASE [{}] ALREADY EXISTS".format(database)
+        return True
+    # else:
+    #     return False
 
 
 def extract_ref(text):
@@ -1345,8 +1358,13 @@ def zip_folder(input_folder_path, output_file_path=None):
     as well.
     """
 
-    if path.isfile(output_file_path) is not True:
-        output_file_path = os.path.join(os.path.abspath(os.path.join(input_folder_path, os.pardir)), "export.zip")
+    if output_file_path is not None:
+        print "output_file_path:", output_file_path
+        print "output_file_path directory:", path.dirname(output_file_path)
+
+    if output_file_path is None or path.isdir(path.dirname(output_file_path)) is False:
+        print "CREATING THE DIRECTORY"
+        output_file_path = os.path.join(os.path.abspath(os.path.join(input_folder_path, os.pardir)), "exportResearch.zip")
 
     # parent_dir = os.path.abspath(os.path.join(input_folder_path, os.pardir))
 
@@ -1436,3 +1454,4 @@ def get_resource_value(resources, targets):
 #                 BIND(<{0}> AS ?dataset)
 #                 ?resource a <{1}> .
 #                 ?resource {2} ?value
+

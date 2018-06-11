@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 # coding=utf-8
 
-import re
 import os
 import codecs
 import rdflib
 import datetime
+import re as regex
 import cStringIO as Buffer
 import Alignments.Query as Qry
 import Alignments.Utility as Ut
@@ -13,12 +13,21 @@ import Alignments.Settings as St
 import Alignments.NameSpace as Ns
 import Alignments.Server_Settings as Svr
 from kitchen.text.converters import to_unicode, to_bytes
+from Alignments.UserActivities.Import_Data import download_stardog_data
 
 
 # ALIGNMENT FOR VISUALISATION
-def export_alignment_all(alignment, limit=5000):
+# TODO: NEEDS TO BE UPDATED WITH OFSET IN CASE OF LARGE ALIGNMENTS.
+# TODO: THE download_stardog_data FUNCTIION FROM import_data.py COULD BE THE WAY TO GO
+def export_alignment_all(alignment, directory=None, limit=5000):
 
-    # COMMENT THE LIMKT OIT IF IT IS EQUAL TO NONE
+    directory = os.path.join(directory, "")
+    print directory
+    if os.path.isdir(os.path.dirname(directory)) is False or os.path.exists(directory) is False:
+        print "CREATING THE DIRECTORY"
+        os.mkdir(os.path.dirname(directory))
+
+    # COMMENT THE LINKSET OIT IF IT IS EQUAL TO NONE
 
     # This function returns all the links + some metadata about the alignment.
     # METADATA: source dataset, target dataset and mechanism
@@ -29,7 +38,7 @@ def export_alignment_all(alignment, limit=5000):
     alignment = alignment if Ut.is_nt_format(alignment) is True else "<{}>".format(alignment)
 
     # ****************************************************
-    # 1. ET THE METADATA OF THE ALIGNMENT: THE QUERY
+    # 1. GET THE METADATA OF THE ALIGNMENT: THE QUERY
     # ****************************************************
     meta = """
     PREFIX ll: <{0}>
@@ -46,7 +55,9 @@ def export_alignment_all(alignment, limit=5000):
     # GET THE METADATA OF THE ALIGNMENT: RUN THE QUERY
     meta_construct = Qry.endpointconstruct(meta, clean=False)
     meta_construct = meta_construct.replace("{", "").replace("}", "")
-    print meta_construct
+    with open(os.path.join(directory, "metadata.ttl"), "wb") as metadata:
+        metadata.write(meta_construct)
+    # print meta_construct
 
     # ****************************************************
     # 2. GET THE CORRESPONDENCES OF THE LINKSET
@@ -70,7 +81,9 @@ def export_alignment_all(alignment, limit=5000):
     alignment_construct = Qry.endpointconstruct(query, clean=False)
     if alignment_construct:
         alignment_construct = alignment_construct.replace("{", "{}\n{{".format(alignment))
-    print alignment_construct
+    # print alignment_construct
+    with open(os.path.join(directory, "linkset.trig"), "wb") as links:
+        links.write(alignment_construct)
 
     # ****************************************************
     # 3. GET THE METADATA CORRESPONDENCES' PREDICATES
@@ -103,7 +116,9 @@ def export_alignment_all(alignment, limit=5000):
     singleton_construct = Qry.endpointconstruct(singleton_query, clean=False)
     if singleton_construct:
         singleton_construct = singleton_construct.replace("{", "{}\n{{".format(singleton_graph_uri))
-    print singleton_construct
+    # print singleton_construct
+    with open(os.path.join(directory, "singletons.trig"), "wb") as singletons:
+        singletons.write(singleton_construct)
 
     # LOAD THE METADATA USING RDFLIB
     sg = rdflib.Graph()
@@ -125,17 +140,27 @@ def export_alignment_all(alignment, limit=5000):
     message = "You have just downloaded the graph [{}] which contains [{}] correspondences. ".format(
         row_alignment, triples)
 
+    host = Svr.settings[St.stardog_host_name]
+    endpoint = b"http://{}/annex/{}/sparql/query?".format(host, Svr.settings[St.database])
+
+    local_name = Ut.get_uri_local_name_plus(alignment)
+    file_at_parent_directory = os.path.join(os.path.abspath(
+        os.path.join(directory, os.pardir)), "{}.zip".format(local_name))
+
+    zipped_file = Ut.zip_folder(directory, output_file_path=file_at_parent_directory)
+    print "\t>>> THE ZIPPED FILE IS LOCATED AT:\n\t\t- {}".format(zipped_file)
+
     # result = result
     # print result
     print "Done with graph: {}".format(alignment)
 
-    return {'result': {
-        "generic_metadata": meta_construct,
-        'specific_metadata': singleton_construct,
-        'data': alignment_construct}, 'message': message}
+    # return {'result': {
+    #     "generic_metadata": meta_construct,
+    #     'specific_metadata': singleton_construct,
+    #     'data': alignment_construct}, 'message': message}
 
-# export_alignment_all("http://risis.eu/linkset/eter_2014_grid_20170712_exactStrSim_University_Institution_Name_P1884421363", limit=5000)
-#
+    return {'result': zipped_file, 'message': message}
+
 
 # FLAT ALIGNMENT
 def export_flat_alignment(alignment):
@@ -163,7 +188,7 @@ def export_flat_alignment(alignment):
 
     # REMOVE EMPTY LINES
     # COMMA IS COUNTED WHENEVER THERE ARE MORE OBJECTS FOR THE SUBJECT
-    triples = len(re.findall('ll:mySameAs', alignment_construct)) + len(re.findall(',', alignment_construct))
+    triples = len(regex.findall('ll:mySameAs', alignment_construct)) + len(regex.findall(',', alignment_construct))
     alignment_construct = "\n".join([line for line in alignment_construct.splitlines() if line.strip()])
     alignment_construct = alignment_construct.replace("{", "{}\n{{".format(alignment))
 
@@ -213,7 +238,7 @@ def export_flat_alignment_and_metadata(alignment):
     alignment_construct = "\n".join([line for line in alignment_construct.splitlines() if line.strip()]) + "\n\n" + \
                           flat['result']
 
-    result = "### GENERIC METADATA FOR \n### LINKSET: {}\n\n{}".format( alignment, alignment_construct)
+    result = "### GENERIC METADATA FOR \n### LINKSET: {}\n\n{}".format(alignment, alignment_construct)
     message = "You have just downloaded the graph [{}] which contains [{}] correspondences. ".format(
         row_alignment, triples)
     print result
@@ -562,17 +587,40 @@ def enrich_query(specs, limit=0, offset=0, is_count=True):
 
 
 # ENRICHING DATASETS WITH GADM BOUNDARIES: THE MAIN FUNCTION
-def enrich(specs, directory):
+def enrich(specs, directory, endpoint):
 
     # TODO RUN IT IF THERE IS NOT GRAPH ENRICHED WITH THE SAME NAME
 
     # specs[St.graph] = "http://grid.ac/20170712"
+    print "ENRICHING DATA/GRAPH FROM EXPORT-ALIGNMENT"
     print "GRAPH:", specs[St.graph]
     print "ENTITY TYPE:", specs[St.entity_datatype]
     print "LAT PREDICATE:", specs[St.long_predicate]
     print "LONG PREDICATE:", specs[St.lat_predicate]
     print "FILE DIRECTORY:", directory
     name = Ut.get_uri_local_name(specs[St.graph])
+
+    print endpoint
+    data_1 = Qry.virtuoso_request("ask {{ GRAPH <{}> {{ ?x ?y ?z . }} }}".format(specs[St.graph]), endpoint)
+    data_1 = regex.findall("rs:boolean[ ]*(.*)[ ]*\.", data_1["result"])
+    if len(data_1) > 0:
+        data_1 = data_1[0].strip() == "true"
+        if data_1 is False:
+            print "GRAPH: {} {}".format(specs[St.graph], "DOES NOT EXIST AT THE REMOTE VIRTUOSO SITE.")
+
+    # CHECKING WHETHER BOTH DATASETS ARE AT THE VIRTUOSO TRIPLE STORE
+    data_2 = Qry.virtuoso_request("ask {GRAPH <http://geo.risis.eu/gadm>{ ?x ?y ?z . }}", endpoint)
+    data_2 = regex.findall("rs:boolean[ ]*(.*)[ ]*\.", data_2["result"])
+    if len(data_2) > 0:
+        data_2 = data_2[0].strip() == "true"
+        if data_2 is False:
+            print "GRAPH: {} {}".format(specs[St.graph], "DOES NOT EXIST AT THE REMOTE VIRTUOSO SITE.")
+
+    if data_1 is False or data_2 is False:
+        message = "BECAUSE BOTH DATASETS NEED TO BE PRESENT AT OUR TRIPLES STORE, WE ARE UNABLE TO EXECUTE THE REQUEST."
+        return {St.message: message,
+                St.result: 'The dataset {} '
+                           'cannot be enriched with GADM boundary  at the moment.'.format(specs[St.graph])}
 
     total = 0
     limit = 20000
@@ -590,7 +638,8 @@ def enrich(specs, directory):
 
     print "\n1. GETTING THE TOTAL NUMBER OF TRIPLES."
     count_query = enrich_query(specs, limit=0, offset=0, is_count=True)
-    count_res = Qry.virtuoso_request(count_query)
+    print count_query
+    count_res = Qry.virtuoso_request(count_query, endpoint)
     result = count_res['result']
 
     # GET THE TOTAL NUMBER OF TRIPLES
@@ -617,7 +666,7 @@ def enrich(specs, directory):
 
     load_text = """echo "Loading data"
             {}stardog data add {} -g {} "{}"
-            """.format(stardog_path, Svr.DATABASE, enriched_graph, f_path)
+            """.format(stardog_path, Svr.settings[St.database], enriched_graph, f_path)
 
     batch_writer.write(to_unicode(load_text))
     batch_writer.close()
@@ -635,7 +684,7 @@ def enrich(specs, directory):
         # print Qry.virtuoso(virtuoso)["result"]
 
         # print "\t\t2. RUNNING THE QUERY + WRITE THE RESULT TO FILE"
-        writer.write(Qry.virtuoso_request(virtuoso)["result"])
+        writer.write(Qry.virtuoso_request(virtuoso, endpoint)["result"])
 
     writer.close()
     print "\n4. RUNNING THE BATCH FILE"
@@ -757,7 +806,7 @@ def export_flat_alignment_service(alignment):
     # FIRE THE CONSTRUCT AGAINST THE TRIPLE STORE
     alignment_construct = Qry.endpointconstruct(query)
     # REMOVE EMPTY LINES
-    triples = len(re.findall('ll:mySameAs', alignment_construct))
+    triples = len(regex.findall('ll:mySameAs', alignment_construct))
     alignment_construct = "\n".join([line for line in alignment_construct.splitlines() if line.strip()])
     result = "### TRIPLE COUNT: {}\n### LINKSET: {}\n".format(triples, alignment) + alignment_construct
     message = "You have just downloaded the graph [{}] which contains [{}] correspondences. ".format(
@@ -845,7 +894,7 @@ def import_gadm():
     stardog_path = '' if Ut.OPE_SYS == "windows" else Svr.settings[St.stardog_path]
     load_text = """echo "Loading data"
                 {}stardog data add {} -g {} "{}"
-                """.format(stardog_path, Svr.DATABASE, graph, f_path)
+                """.format(stardog_path, Svr.settings[St.database], graph, f_path)
     batch_writer.write(to_unicode(load_text))
     batch_writer.close()
 

@@ -31,6 +31,24 @@ def linkset_metadata(specs, display=False):
     src_aligns = Ls.format_aligns(source[St.aligns])
     trg_aligns = Ls.format_aligns(target[St.aligns])
 
+    # cCROSS CHECK INFORMATION IS USED IN CASE THE ALIGN PROPERTY APPEARS MEANINGLESS
+    src_cross_check = Ls.format_aligns(source[St.crossCheck]) if St.crossCheck in source else None
+    trg_cross_check = Ls.format_aligns(target[St.crossCheck]) if St.crossCheck in target else None
+
+    # CROSS CHECK FOR THE WHERE CLAUSE
+    cross_check_where = ''
+    cross_check_where += "\n    BIND(iri({}) AS ?src_crossCheck)".format(
+        src_cross_check) if src_cross_check is not None else ''
+    cross_check_where += "\n    BIND(iri({}) AS ?trg_crossCheck)".format(
+        trg_cross_check) if trg_cross_check is not None else ''
+
+    # CROSS CHECK FOR THE INSERT CLAUSE
+    cross_check_insert = ''
+    cross_check_insert += "\n        alivocab:crossCheckSubject        ?src_crossCheck ;" \
+        if src_cross_check is not None else ''
+    cross_check_insert += "\n        alivocab:crossCheckObject         ?trg_crossCheck ;" \
+        if trg_cross_check is not None else ''
+
     # specs[St.linkset] = "{}{}".format(Ns.linkset, specs[St.linkset_name])
     specs[St.singleton] = "{}{}".format(Ns.singletons, specs[St.linkset_name])
     specs[St.link] = "{}{}{}".format(Ns.alivocab, "exactStrSim", specs[St.sameAsCount])
@@ -120,7 +138,7 @@ def linkset_metadata(specs, display=False):
                "        bdb:assertionMethod         <{}> ;".format(specs[St.assertion_method]),
                "        bdb:linksetJustification    <{}> ;{}".format(specs[St.justification], extra),
                "        alivocab:alignsSubjects     ?src_aligns ;",
-               "        alivocab:alignsObjects      ?trg_aligns ;",
+               "        alivocab:alignsObjects      ?trg_aligns ;{}".format(cross_check_insert),
                "        rdfs:comment                \"\"\"{}\"\"\" .".format(specs[St.linkset_comment]),
 
                "\n    ### METADATA ABOUT THE LINKTYPE",
@@ -141,9 +159,9 @@ def linkset_metadata(specs, display=False):
                "WHERE",
                "{",
                "    BIND(iri({}) AS ?src_aligns)".format(src_aligns),
-               "    BIND(iri({}) AS ?trg_aligns)".format(trg_aligns),
+               "    BIND(iri({}) AS ?trg_aligns){}".format(trg_aligns, cross_check_where),
                "}")
-    # print query
+    print query
     if display is True:
         print query
     return query
@@ -435,7 +453,7 @@ def linkset_geo_metadata(specs, display=False):
                "    BIND(iri({}) AS ?trg_lat)".format(trg_lat),
 
                "}")
-    # print query
+    print query
     if display is True:
         print query
     return query
@@ -445,6 +463,24 @@ def spa_subset_metadata(specs):
     source = specs[St.source]
     target = specs[St.target]
     src_aligns = Ls.format_aligns(source[St.link_old])
+
+     # cCROSS CHECK INFORMATION IS USED IN CASE THE ALIGN PROPERTY APPEARS MEANINGLESS
+    src_cross_check = Ls.format_aligns(source[St.crossCheck]) if St.crossCheck in source else None
+    trg_cross_check = Ls.format_aligns(target[St.crossCheck]) if St.crossCheck in target else None
+
+    # CROSS CHECK FOR THE WHERE CLAUSE
+    cross_check_where = ''
+    cross_check_where += "\n    BIND(iri({}) AS ?src_crossCheck)".format(
+        src_cross_check) if src_cross_check is not None else ''
+    cross_check_where += "\n    BIND(iri({}) AS ?trg_crossCheck)".format(
+        trg_cross_check) if trg_cross_check is not None else ''
+
+    # CROSS CHECK FOR THE INSERT CLAUSE
+    cross_check_insert = ''
+    cross_check_insert += "\n        alivocab:crossCheckSubject        ?src_crossCheck ;" \
+        if src_cross_check is not None else ''
+    cross_check_insert += "\n        alivocab:crossCheckObject         ?trg_crossCheck ;" \
+        if trg_cross_check is not None else ''
 
     metadata = "\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}" \
                "\n{}\n{}\n{}\n{}" \
@@ -479,7 +515,7 @@ def spa_subset_metadata(specs):
                "\t       bdb:assertionMethod       <{}> ;".format(specs[St.assertion_method]),
                "\t       bdb:linksetJustification  <{}> ;".format(specs[St.justification]),
                "\t       alivocab:alignsSubjects   ?src_aligns ;",
-               "\t       alivocab:alignsObjects   <{}> ;".format(Ns.rsrId),
+               "\t       alivocab:alignsObjects   <{}> ;{}".format(Ns.rsrId, cross_check_insert),
                "\t       rdfs:comment              \"\"\"{}\"\"\" .".format(specs[St.linkset_comment]),
 
                "\n\t     ### METADATA ABOUT THE LINKSET JUSTIFICATION",
@@ -498,7 +534,7 @@ def spa_subset_metadata(specs):
 
                "\tWHERE",
                "\t{",
-               "\t      BIND(iri({}) AS ?src_aligns)".format(src_aligns),
+               "\t      BIND(iri({}) AS ?src_aligns){}".format(src_aligns, cross_check_where),
                "\t}"
                )
     # print metadata
@@ -613,7 +649,8 @@ def convert_to_float(value):
     # print isinstance(u'\x30', numbers.Rational)
     try:
         return float(value)
-    except:
+    except Exception as err:
+        print err
         return float("NaN")
 
 

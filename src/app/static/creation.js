@@ -599,8 +599,9 @@ function geoEnrichmentClick()
     var entity_datatype = $('#dts_selected_entity-type').attr('uri');
     var long_predicate = $('#long_selected_pred').attr('uri');
     var lat_predicate = $('#lat_selected_pred').attr('uri');
+    var endpoint = document.getElementById('enrichmentEndpoint_input').value;
 
-    if ((graph) && (entity_datatype) && (long_predicate) && (lat_predicate))
+    if ((graph) && (entity_datatype) && (long_predicate) && (lat_predicate) && endpoint)
     {
        var message = "Executing the dataset geo-enrichement";
        $('#geoenrichment_message_col').html(addNote(message,cl='warning'));
@@ -609,7 +610,8 @@ function geoEnrichmentClick()
                       data={'graph': graph,
                             'entity_datatype': entity_datatype,
                             'long_predicate': long_predicate,
-                            'lat_predicate': lat_predicate
+                            'lat_predicate': lat_predicate,
+                            'endpoint': endpoint
                             },
               function(data)
        {
@@ -1085,40 +1087,6 @@ function inspect_linkset_activate(mode='default')
           {
             var selection = selectListItemUnique(this, 'inspect_linkset_selection_col')
           }
-//          if (mode == 'inspect_linkset_cluster')
-//          {
-//            var linkset_uri = $(this).attr('uri');
-//            var linkset_type = $(this).attr('lkst_type');
-//
-//            // load the panel describing the linkset sample
-//            $('#inspect_linkset_linkset_details_col').show();
-//            $('#inspect_linkset_linkset_details_col').html('Loading...');
-//            $.get('/getlinksetdetailsCluster',data={'linkset': linkset_uri},function(data)
-//            {
-//                var obj = JSON.parse(data);
-//                $('#inspect_linkset_linkset_details_col').html(obj.data);
-//
-//                get_filter(rq_uri, linkset_uri);
-//
-//                if (mode == 'refine' || mode == 'edit' || mode == 'reject-refine' || mode == 'export')
-//                {
-//                   $('#creation_linkset_row').show();
-//                   loadEditPanel(obj.metadata, mode);
-//                   enableButton('deleteLinksetButton');
-//                   enableButton('exportLinksetButton');
-//                   enableButton('exportPlotLinksetButton');
-//                }
-//                else if (mode == 'inspect')
-//                {
-//                   $('#creation_linkset_filter_row').show();
-//                   $('#creation_linkset_search_row').show();
-//                   $('#creation_linkset_correspondence_row').show();
-//                   showDetails(rq_uri, linkset_uri, obj.metadata, filter_uri='none');
-//                }
-//            });
-//
-//          }
-//          else
           if (selection)
           {
             var linkset_uri = $(this).attr('uri');
@@ -1130,6 +1098,7 @@ function inspect_linkset_activate(mode='default')
             // load the panel describing the linkset sample
             $('#inspect_linkset_linkset_details_col').show();
             $('#inspect_linkset_linkset_details_col').html('Loading...');
+            $('#creation_linkset_metadata_result').val('');
             $.get('/getlinksetdetails',data={'linkset': linkset_uri, 'lkst_type': linkset_type, 'load_samples': load_samples},function(data)
             {
                 var obj = JSON.parse(data);
@@ -1149,7 +1118,9 @@ function inspect_linkset_activate(mode='default')
                 {
                    $('#creation_linkset_filter_row').show();
                    $('#creation_linkset_search_row').show();
+                   $('#creation_linkset_metadata_row').show();
                    $('#creation_linkset_correspondence_row').show();
+                   $('#creation_linkset_metadata_result').val(obj.metadata_text);
                    showDetails(rq_uri, linkset_uri, obj.metadata, filter_uri='none');
                 }
             });
@@ -1497,6 +1468,14 @@ function createLinksetClick()
           specs['geo_unit'] = $('#linkset_geo_match_unit').find("option:selected").text();
         }
 
+        if (($('#selected_meth').attr('uri') == 'embededAlignment') || ($('#selected_meth').attr('uri') == 'identity'))
+        {
+            if ($('#src_selected_predCrossCheck').attr('uri'))
+              specs['src_crossCheck'] = $('#src_selected_predCrossCheck').attr('uri');
+            if ($('#trg_selected_predCrossCheck').attr('uri'))
+              specs['trg_crossCheck'] = $('#trg_selected_predCrossCheck').attr('uri');
+        }
+
         if ($('#selected_meth').attr('uri') == 'approxNbrSim')
         {
             specs['delta'] = $('#linkset_approx_delta').val();
@@ -1730,31 +1709,40 @@ function exportLinksetClick(filename, mode='flat', user='', psswd='')
                 }
                 else
                 {
-                    csv_1 = obj.result.generic_metadata;
-                    var blob1 = new Blob([csv_1], { type: 'text/csv;charset=utf-8;' });
-                    var url1 = URL.createObjectURL(blob1);
-                    csv_2 = obj.result.specific_metadata;
-                    var blob2 = new Blob([csv_2], { type: 'text/csv;charset=utf-8;' });
-                    var url2 = URL.createObjectURL(blob2);
-                    csv_3 = obj.result.data;
-                    var blob3 = new Blob([csv_3], { type: 'text/csv;charset=utf-8;' });
-                    var url3 = URL.createObjectURL(blob3);
+                       // downloads all files as a zip
+                       var obj = JSON.parse(data);
+                       var fileName = obj.fileName;
+                       var link = document.createElement("a");
+                       link.download = fileName + '.zip';
+                       link.href = '/static/data/' + fileName + '.zip';
+                       link.click();
 
-                    hrefList=[url1, url2, url3];
-                    filenameList=['exportGenericMetadata.ttl','exportSpecificMetadata.trig','exportAlignmentData.trig']
-
-                    for(var i=0; i<hrefList.length; i++){
-                        var link = document.createElement("a");
-                        if (link.download !== undefined) { // feature detection
-                            // Browsers that support HTML5 download attribute
-                            link.setAttribute("href", hrefList[i]);
-                            link.setAttribute("download", filenameList[i]);
-                            link.style.visibility = 'hidden';
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                        }
-                    }
+//                    Old code, downloads each file separetedly
+//                    csv_1 = obj.result.generic_metadata;
+//                    var blob1 = new Blob([csv_1], { type: 'text/csv;charset=utf-8;' });
+//                    var url1 = URL.createObjectURL(blob1);
+//                    csv_2 = obj.result.specific_metadata;
+//                    var blob2 = new Blob([csv_2], { type: 'text/csv;charset=utf-8;' });
+//                    var url2 = URL.createObjectURL(blob2);
+//                    csv_3 = obj.result.data;
+//                    var blob3 = new Blob([csv_3], { type: 'text/csv;charset=utf-8;' });
+//                    var url3 = URL.createObjectURL(blob3);
+//
+//                    hrefList=[url1, url2, url3];
+//                    filenameList=['exportGenericMetadata.ttl','exportSpecificMetadata.trig','exportAlignmentData.trig']
+//
+//                    for(var i=0; i<hrefList.length; i++){
+//                        var link = document.createElement("a");
+//                        if (link.download !== undefined) { // feature detection
+//                            // Browsers that support HTML5 download attribute
+//                            link.setAttribute("href", hrefList[i]);
+//                            link.setAttribute("download", filenameList[i]);
+//                            link.style.visibility = 'hidden';
+//                            document.body.appendChild(link);
+//                            link.click();
+//                            document.body.removeChild(link);
+//                        }
+//                    }
                 }
             }
         });
@@ -2189,6 +2177,7 @@ function applyFilterLinksetClick()
 
        $('#creation_linkset_filter_row').show();
        $('#creation_linkset_search_row').show();
+       $('#creation_linkset_metadata_row').show();
        $('#creation_linkset_correspondence_row').show();
        showDetails(rq_uri, linkset_uri, obj, filter_uri, filter_term);
     });
@@ -2283,6 +2272,7 @@ function applyFilterLensClick()
 
        $('#creation_lens_filter_row').show();
        $('#creation_lens_search_row').show();
+       $('#creation_lens_metadata_row').show();
        $('#creation_lens_correspondence_row').show();
        showDetails(rq_uri, lens_uri, obj, filter_uri, filter_term);
     });
@@ -2393,15 +2383,19 @@ function inspect_lens_activate(mode)
                 // load the panel for filter
                   $('#creation_lens_filter_row').show();
                   $('#creation_lens_search_row').show();
+                  $('#creation_lens_metadata_row').show();
+
 
                 // load the panel for correspondences details
                   $('#creation_lens_correspondence_row').show();
+                  $('#creation_lens_metadata_result').val('')
                   //already has Loading...
                   $.get('/getlensdetails',data={'lens': lens_uri,
                                                 'template': 'none'},function(data)
                   {
                     var obj = JSON.parse(data);
-                    showDetails(rq_uri, lens_uri, obj);
+                    $('#creation_lens_metadata_result').val(obj.metadata_text);
+                    showDetails(rq_uri, lens_uri, obj.metadata);
 
                   });
 
@@ -2417,6 +2411,7 @@ function inspect_lens_activate(mode)
       $('#lens_inspect_panel_body').hide();
       $('#creation_lens_filter_row').hide();
       $('#creation_lens_search_row').hide();
+      $('#creation_lens_metadata_row').hide();
       $('#creation_lens_correspondence_row').hide();
       $('#creation_lens_row').show();
       $('#edit_lens_heading').show();
@@ -2426,6 +2421,7 @@ function inspect_lens_activate(mode)
       $('#lens_inspect_panel_body').hide();
       $('#creation_lens_filter_row').hide();
       $('#creation_lens_search_row').hide();
+      $('#creation_lens_metadata_row').hide();
       $('#creation_lens_correspondence_row').hide();
       $('#creation_lens_row').show();
       $('#export_lens_heading').show();
@@ -2435,6 +2431,7 @@ function inspect_lens_activate(mode)
       $('#lens_creation_row').hide();
       $('#creation_lens_filter_row').hide();
       $('#creation_lens_search_row').hide();
+      $('#creation_lens_metadata_row').hide();
       $('#creation_lens_correspondence_row').hide();
       $('#creation_lens_row').show();
 //      enableButton('exportLensButton', enable=false);
@@ -4416,6 +4413,8 @@ function methodClick(th)
     $('#geo_match_settings_row').hide();
     $('#source_geoSim_params').hide();
     $('#target_geoSim_params').hide();
+    $('#panel_sourceCrossCheckProp').hide();
+    $('#panel_targetCrossCheckProp').hide();
     $('#div_targetAlignProp').html('<h4>Property to align</h4>');
     $('#div_sourceAlignProp').html('<h4>Property to align</h4>');
 
@@ -4426,6 +4425,8 @@ function methodClick(th)
       $('#src_list_pred_row').hide();
       $('#trg_selected_pred_row').hide();
       $('#trg_list_pred_row').hide();
+      $('#panel_sourceCrossCheckProp').show();
+      $('#panel_targetCrossCheckProp').show();
       description = `The method <b>IDENTITY</b> aligns the <b>identifier of the source</b> with the <b>identifier of the target</b>.
                      This implies that both datasets use the same Unified Resource Identifier (URI).`;
     }
@@ -4436,6 +4437,8 @@ function methodClick(th)
       $('#src_list_pred_row').show();
       $('#trg_selected_pred_row').hide();
       $('#trg_list_pred_row').hide();
+      $('#panel_sourceCrossCheckProp').show();
+      $('#panel_targetCrossCheckProp').show();
       description = `The method <b>EMBEDED ALIGNMENT EXTRATION</b> extracts an alignment already provided within the <b>source</b> dataset.
                      The extraction relies on the value of the linking <b>property</b>, i.e. <b>property of the source</b> that holds the <b>identifier of the target</b>. However, the real mechanism used to create the alignment is not explicitly provided by the source.`;
     }
@@ -4686,6 +4689,7 @@ function refresh_create_linkset(mode='all')
       $('#inspect_linkset_linkset_details_col').html("");
       $('#creation_linkset_filter_row').hide();
       $('#creation_linkset_search_row').hide();
+      $('#creation_linkset_metadata_row').hide();
       $('#creation_linkset_correspondence_row').hide();
       $('#creation_linkset_correspondence_col').html('');
 
@@ -4787,6 +4791,16 @@ function refresh_create_linkset(mode='all')
 
       elem = document.getElementById('trg_selected_pred');
       $('#trg_selected_pred').html('Select a Property + <span style="color:blue"><strong> example value </strong></span>');
+      elem.setAttribute('uri', '');
+      elem.setAttribute('style', 'background-color:none');
+
+      elem = document.getElementById('src_selected_predCrossCheck');
+      $('#src_selected_predCrossCheck').html('Select a Property + <span style="color:blue"><strong> example value </strong></span>');
+      elem.setAttribute('uri', '');
+      elem.setAttribute('style', 'background-color:none');
+
+      elem = document.getElementById('trg_selected_predCrossCheck');
+      $('#trg_selected_predCrossCheck').html('Select a Property + <span style="color:blue"><strong> example value </strong></span>');
       elem.setAttribute('uri', '');
       elem.setAttribute('style', 'background-color:none');
 
@@ -4920,6 +4934,8 @@ function refresh_import(mode='all')
 function import_dataset_button(th)
 {
     $('#import_title').html('<h3>Import Dataset</h3>');
+    $('#dropbox').html('<span class="message"><strong><font size="6">Drop here your dataset csv files to upload.</font></strong></span>');
+//    $('#div_targetAlignProp').html('<h4>Property to align</h4>');
     $('#dataset_upload_row').show();
     $('#dataset_convert_row').show();
     $('#import_dataset_div').show();
@@ -4991,12 +5007,12 @@ function convertDatasetClick()
     var files = getSelectValues(document.getElementById('ds_files_list'));
 
     //var input = document.getElementById('dataset_file_path');
-    var separator = document.getElementById('ds_separator');
-    var dataset = document.getElementById('ds_name');
-    var entity_type = document.getElementById('ds_entity_type_name');
+    var separator = document.getElementById('ds_separator').value;
+    var dataset = document.getElementById('ds_name').value.trim().replace(' ','_');
+    var entity_type = document.getElementById('ds_entity_type_name').value.trim().replace(' ','_');
 
     console.log(files);
-    if ((files.length > 0) && (dataset.value) && (entity_type.value) )
+    if ((files.length > 0) && (dataset) && (entity_type) )
     {
         var indexes_1 = []
         indexes_1 = getSelectIndexes(document.getElementById('ds_type_list'));
@@ -5020,15 +5036,16 @@ function convertDatasetClick()
             var subject_id = null;
         }
 
+        chronoReset();
         loadingGif(document.getElementById('dataset_convertion_message_col'), 2);
 
         $('#dataset_convertion_message_col').html(addNote("Your file is being converted!",cl='warning'));
 
         $.get('/convertCSVToRDF',
               data={'file': files[0],
-                    'separator': separator.value,
-                    'database': dataset.value,
-                    'entity_type': entity_type.value,
+                    'separator': separator,
+                    'database': dataset,
+                    'entity_type': entity_type,
                     'rdftype[]': rdftype,
                     'subject_id': subject_id},
               function(data)
@@ -5072,6 +5089,7 @@ function viewSampleFileClick()
 //    var input = document.getElementById('dataset_file_path');
 
     var files = getSelectValues(document.getElementById('ds_files_list'));
+    $('#upload_sample').val('');
 
     if ((files.length > 0) && (files[0] != '-- Select a file to view a sample --'))
     {
@@ -5095,6 +5113,7 @@ function viewSampleFileClick()
 function viewSampleAlignFileClick()
 {
     var file = $('#viewAlignmentButton').attr('file_path');
+    $('#upload_sample').val('');
 
     if (file)
     {
@@ -5117,6 +5136,7 @@ function viewSampleAlignFileClick()
 function viewRQuestionFileClick()
 {
     var file = $('#viewRQuestionButton').attr('file_path');
+    $('#upload_sample').val('');
 
     if (file)
     {
@@ -5250,12 +5270,15 @@ function importAlignmentClick()
     var file_path = $('#viewAlignmentButton').attr('file_path');
     var indexes_1 = []
     indexes_1 = getSelectIndexes(document.getElementById('ds_files_list'));
+    $('#import_alignment').val('');
     if (indexes_1.length != 0)
     {
         var index = indexes_1[0];
         if ((file_path) && (index))
         {
+            chronoReset();
             $('#import_alignment_message_col').html(addNote(loading_dataset,cl='warning'));
+            loadingGif(document.getElementById('import_alignment_message_col'), 2);
             $.get('/userLinksetImport',
               data={'original': file_path,
                     'index': index},
@@ -5265,6 +5288,7 @@ function importAlignmentClick()
 //                  console.log(obj);
                   $('#import_alignment').val(obj);
                   $('#import_alignment_message_col').html(addNote(loaded_dataset,cl='success'));
+                  loadingGif(document.getElementById('import_alignment_message_col'), 2, show = false);
             });
         }
     }
@@ -5283,7 +5307,10 @@ function importRQuestionClick()
     var batch_path = $('#viewRQuestionButton').attr('sh_batch');
     var zip_path = $('#viewRQuestionButton').attr('file_path');
 
+    chronoReset();
     $('#import_rquestion_message_col').html(addNote(loading_dataset,cl='warning'));
+    loadingGif(document.getElementById('import_rquestion_message_col'), 2);
+
     $.get('/userRQuestionImport',
       data={'batch_path': batch_path,
             'zip_path': zip_path},
@@ -5292,6 +5319,7 @@ function importRQuestionClick()
 //          var obj = JSON.parse(data);
           $('#import_rquestion').val(data);
           $('#import_rquestion_message_col').html(addNote('Files successfully loaded.',cl='success'));
+          loadingGif(document.getElementById('import_rquestion_message_col'), 2, show = false);
     });
 
 }

@@ -1,20 +1,20 @@
 # encoding=utf-8
 
-import os
-import re
 import ast
+import collections
 import json
+import logging
+import os
+import os.path as path
+import re
 import urllib
 import urllib2
-import logging
+
+import Queries as Qry
 import requests
 import xmltodict
-import collections
-import Queries as Qry
-import os.path as path
-from flask import render_template, request, redirect, jsonify # url_for, make_response, g
-
 from Alignments.UserActivities.Import_Data import export_research_question
+from flask import render_template, request, redirect, jsonify # url_for, make_response, g
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
@@ -29,8 +29,6 @@ if CREATION_ACTIVE:
     import Alignments.Settings as St
     import Alignments.NameSpace as Ns
     import Alignments.ToRDF.CSV as CSV
-    import Alignments.ErrorCodes as Ec
-    import Alignments.Linksets.Linkset as Ls
     import Alignments.Manage.AdminGraphs as adm
     from Alignments.Lenses.Lens_Union import union
     from Alignments.Lenses.Lens_Difference import difference as diff
@@ -53,6 +51,7 @@ if CREATION_ACTIVE:
     import Alignments.UserActivities.Clustering as Clt
     from shutil import rmtree
     import Alignments.Server_Settings as Svr
+    import Alignments.StardogServer.StardogData as Stardog
 
     import Alignments.ConstraintClustering.DatasetsResourceClustering as DRC
 
@@ -208,6 +207,56 @@ def getupload():
 
     return ""
 
+
+
+@app.route('/executeTriplestoreAdmin')
+def executeTriplestoreAdmin():
+    option = request.args.get('option', '')
+    input = request.args.get('input', '')
+    if option == 'Server Status':
+        result = Stardog.stardog_status()
+    elif option == 'Query List':
+        result = Stardog.stardog_query_list()
+    else:
+        if input == '':
+            result = 'PLEASE GIVE AN INPUT NUMBER!!'
+        else:
+            try:
+                int_input = int(input)
+                if option == 'Query Status [give query id as input]':
+                    result = Stardog.stardog_query_status(int_input)
+                elif option == 'Query Kill [give query id as input]':
+                    result = Stardog.stardog_query_kill(int_input)
+                else:
+                    result = 'Option is not valid!'
+            except:
+                result = 'PLEASE GIVE AN INPUT NUMBER!!'
+    return result
+
+@app.route('/executeTriplestoreQuery')
+def executeTriplestoreQuery():
+    option = request.args.get('option', '')
+    input1 = request.args.get('input', '')
+    input2 = request.args.get('input2', '')
+    if option == 'Named Graphs':
+        result = Stardog.query_graphs()
+    else:
+        if input1 == '':
+            result = 'INPUT 1 missing!!'
+        elif option == 'Search Named Graphs [give as input a text for search]':
+            result = Stardog.query_graph_search(input1)
+        elif option == 'Add data from trig-files in directory [give as input directory]':
+            result = Stardog.stardog_data_add_folder(input1,fies_format='trig',activated=True)
+        else:
+            if input2 == '':
+                result = 'INPUT 2 missing!!'
+            elif option == 'Add data file [give as input filepath and named graph]':
+                result = Stardog.stardog_data_add_file(input1,graph=input2,activated=True)
+            elif option == 'Add data from ttl-files in directory [give as input directory and named graph]':
+                result = Stardog.stardog_data_add_folder(input1,named_graph=input2,fies_format='ttl',activated=True)
+            else:
+                result = 'Option is not valid!'
+    return result
 
 @app.route('/userLinksetImport')
 def userLinksetImport():
@@ -371,36 +420,13 @@ def enrichdataset():
         St.long_predicate: request.args.get('long_predicate', ''),
         St.lat_predicate: request.args.get('lat_predicate', '')
     }
+    endpoint = request.args.get('endpoint', '')
 
     # print specs
-    result = Ex.enrich(specs, ENRICHED_FOLDER)
+    result = Ex.enrich(specs, ENRICHED_FOLDER, endpoint)
 
     # SEND BAK RESULTS
     return json.dumps(result)
-
-
-# @app.route('/getcorrespheader', methods=['GET'])
-# def correspondencesHeader():
-#
-#     rq_uri = request.args.get('rq_uri', '')
-#     graph_uri = request.args.get('graph_uri', '')
-#     filter_uri = request.args.get('filter_uri', '')
-#     filter_term = request.args.get('filter_term', '').replace('\"','').replace('\'','')
-#
-#     query = Qry.get_correspondHeader(rq_uri, graph_uri, filter_uri, filter_term)
-#     data = sparql(query, strip=True)
-#
-#     header_template = """<h3><strong>Correspondences</strong></h3>
-#                           <span class="badge alert-primary"> {{ graph_label }} </span> contains
-#                           <span id='triples_span' class="badge alert-success">{{ graph_triples }}</span> triples
-#                             {% if alignsMechanism != ''%}
-#                           , aligned using the <span class="badge alert-info"> {{ alignsMechanism|upper }}</span> mechanism.
-#                             {%endif%}
-#                             {% if operator != ''%}
-#                            generated using the <span class="badge alert-info"> {{ operator|upper }}</span> operator.
-#                             {%endif%}"""
-#
-#     return render_template(header_template, data)
 
 
 @app.route('/getcorrespondences', methods=['GET'])
@@ -605,10 +631,14 @@ def details():
     obj_uri = request.args.get('obj_uri', '')
     subjectTarget = request.args.get('subjectTarget', '')
     objectTarget = request.args.get('objectTarget', '')
-    # alignsSubjects = request.args.get('alignsSubjectsList', '')
-    # alignsObjects = request.args.get('alignsObjectsList', '')
+    alignsMechanism = request.args.get('alignsMechanism', '')
+
+    print 'originals: ', request.args.get('alignsSubjectsList', '')
+    print request.args.get('alignsObjectsList', '')
+
     alignsSubjectsList = map((lambda x: x.strip()),request.args.get('alignsSubjectsList', '').split('|'))
     alignsObjectsList = map((lambda x: x.strip()),request.args.get('alignsObjectsList', '').split('|'))
+
     # FOR EACH DATASET GET VALUES FOR THE ALIGNED PROPERTIES
 
     if len(alignsSubjectsList) > 1:
@@ -622,12 +652,32 @@ def details():
         alignsObjects = Ut.get_uri_local_name(request.args.get('alignsObjectsList', ''))
 
     s_crossCheck_property = request.args.get('crossCheckSubject', '')
+    o_crossCheck_property = request.args.get('crossCheckObject', '')
+
     if s_crossCheck_property != '':
         alignsSubjectsList += [s_crossCheck_property]
+    elif o_crossCheck_property != '':
+        alignsObjectsList += ['none']
 
-    o_crossCheck_property = request.args.get('crossCheckObject', '')
     if o_crossCheck_property != '':
         alignsObjectsList += [o_crossCheck_property]
+    elif s_crossCheck_property != '':
+        alignsObjectsList += ['none']
+
+    # print '>>>>> before: ', alignsMechanism, alignsSubjects, alignsObjects
+    # print '\n', alignsSubjectsList, alignsObjectsList
+    if str(alignsMechanism).__contains__('identity'):
+        alignsSubjects = alignsSubjects.replace('type', 'identifier') if u'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' in alignsSubjectsList else alignsSubjects
+        alignsObjects = alignsObjects.replace('type', 'identifier') if u'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' in alignsSubjectsList else alignsSubjects
+        if s_crossCheck_property != '' and alignsSubjectsList:
+            alignsSubjectsList.remove(u'http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        if o_crossCheck_property != '' and alignsObjectsList:
+            alignsObjectsList.remove(u'http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+    #elif str(alignsMechanism).__contains__('identity'):
+
+
+    # print '>>>> after: ', alignsSubjects, alignsObjects
+    # print '\n', alignsSubjectsList, alignsObjectsList
 
     query = Qry.get_aligned_predicate_value(sub_uri, obj_uri, alignsSubjectsList, alignsObjectsList)
     # print '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@'
@@ -648,56 +698,6 @@ def details():
                             objectTarget = objectTarget,
                             alignsSubjects = alignsSubjects,
                             alignsObjects = alignsObjects)
-
-
-# @app.route('/getdetailslkstcluster', methods=['GET'])
-# def getdetailslkstcluster():
-#     """
-#     This function is called due to request /getdetails
-#     It queries the dataset for both all the correspondences in a certain graph URI
-#     Expected Input: uri, label (for the graph)
-#     The results, ...,
-#         are passed as parameters to the template details_list.html
-#     """
-#
-#     # RETRIEVE VARIABLES
-#     sub_uri = request.args.get('sub_uri', '')
-#     obj_uri = request.args.get('obj_uri', '')
-#     # FOR EACH DATASET GET VALUES FOR THE ALIGNED PROPERTIES
-#
-#     if len(alignsSubjectsList) > 1:
-#         alignsSubjects = reduce((lambda x, y: Ut.get_uri_local_name(x, sep=" / ") + ' | ' + Ut.get_uri_local_name(y, sep=" / ")), alignsSubjectsList)
-#     else:
-#         alignsSubjects = Ut.get_uri_local_name(request.args.get('alignsSubjectsList', ''))
-#
-#     if len(alignsObjectsList) > 1:
-#         alignsObjects = reduce((lambda x, y: Ut.get_uri_local_name(x, sep=" / ") + ' | ' + Ut.get_uri_local_name(y, sep=" / ")), alignsObjectsList)
-#     else:
-#         alignsObjects = Ut.get_uri_local_name(request.args.get('alignsObjectsList', ''))
-#
-#     s_crossCheck_property = request.args.get('crossCheckSubject', '')
-#     if s_crossCheck_property != '':
-#         alignsSubjectsList += [s_crossCheck_property]
-#
-#     o_crossCheck_property = request.args.get('crossCheckObject', '')
-#     if o_crossCheck_property != '':
-#         alignsObjectsList += [o_crossCheck_property]
-#
-#     query = Qry.get_aligned_predicate_value(sub_uri, obj_uri, alignsSubjectsList, alignsObjectsList)
-#     details = sparql(query, strip=True)
-#
-#     if PRINT_RESULTS:
-#         print "\n\nDETAILS:", details
-#
-#     return render_template('details_list.html',
-#                             details = details,
-#                             sub_uri = sub_uri,
-#                             obj_uri = obj_uri,
-#                             subjectTarget = subjectTarget,
-#                             objectTarget = objectTarget,
-#                             alignsSubjects = alignsSubjects,
-#                             alignsObjects = alignsObjects)
-#
 
 
 @app.route('/getlinksetdetails', methods=['GET'])
@@ -741,7 +741,7 @@ def linksetdetails():
         if PRINT_RESULTS:
             print "\n\nDETAILS:", details
 
-        if len(details) > 1 and details[0]['crossCheck']['value'] and details[0]['crossCheck']['value'] == 'True':
+        if len(details) > 0 and details[0]['crossCheck']['value'] == 'True':
             s_property_crossCheck = md['s_property_stripped']['value']
             o_property_crossCheck = md['o_property_stripped']['value']
         else:
@@ -766,55 +766,10 @@ def linksetdetails():
             mechanism_list = md['mechanism_list_stripped']['value']
         )
 
-        return json.dumps({'metadata': md, 'data': data})
+        metadata_text = Stardog.query_graph_metadata(linkset)
 
+        return json.dumps({'metadata': md, 'data': data, 'metadata_text': metadata_text})
 
-# @app.route('/getlinksetdetailssample', methods=['GET'])
-# def linksetdetailssample():
-#     """
-#     This function is called due to request /getdetails
-#     It queries the dataset for both all the correspondences in a certain graph URI
-#     Expected Input: uri, label (for the graph)
-#     The results, ...,
-#         are passed as parameters to the template linksetDetails_list.html
-#     """
-#
-#     # RETRIEVE VARIABLES
-#     linkset = request.args.get('linkset', '')
-#     template = request.args.get('template', 'linksetDetails_list.html')
-#     # filter_uri = request.args.get('filter_uri', '')
-#
-#     query = Qry.get_linkset_corresp_sample_details(linkset, limit=10)
-#     details = sparql(query, strip=True)
-#
-#     # print "LINKSET DETAIL QUERY:", query
-#     # print "LINKSET DETAIL RESULT:", details
-#
-#     s_property_list = ''
-#     o_property_list = ''
-#     mechanism_list = ''
-#     D = None
-#     # print "RESULT!!!!!!!!", details
-#     if details:
-#         d = details[0]
-#         # print "!!!!!!!! D", d
-#         s_property_list = d['s_property_stripped']['value']
-#         o_property_list = d['o_property_stripped']['value']
-#         mechanism_list = d['mechanism_stripped']['value']
-#
-#     if PRINT_RESULTS:
-#         print "\n\nDETAILS:", details
-#
-#     data = render_template(template,
-#         details = details,
-#         subTarget = subTarget,
-#         objTarget = objTarget,
-#         s_property_list = s_property_list,
-#         o_property_list = o_property_list,
-#         mechanism_list = mechanism_list
-#     )
-#
-#     return json.dumps({'metadata': md, 'data': data})
 
 @app.route('/getlinksetdetailsCluster', methods=['GET'])
 def linksetdetailsCluster():
@@ -926,7 +881,8 @@ def lensdetails():
 
     # RETURN THE RESULT
     if (template == 'none'):
-        return json.dumps(d)
+        metadata_text = Stardog.query_graph_metadata(lens)
+        return json.dumps({'metadata': d, 'metadata_text': metadata_text})
     else:
         # if (load_samples == 'yes'):
         #     query = ...
@@ -1615,6 +1571,12 @@ def spa_linkset():
 
     if len(request.args.get('corresp_reducer', '')) > 0:
         specs[St.corr_reducer] = request.args.get('corresp_reducer', '')
+
+    if len(request.args.get('src_crossCheck', '')) > 0:
+        specs[St.source][St.crossCheck] = request.args.get('src_crossCheck', '')
+
+    if len(request.args.get('trg_crossCheck', '')) > 0:
+        specs[St.target][St.crossCheck] = request.args.get('trg_crossCheck', '')
 
     if len(request.args.get('src_lat', '')) > 0:
         specs[St.source][St.latitude] = request.args.get('src_lat', '')
@@ -3088,8 +3050,10 @@ def datasetLinkingClusterDetails3():
     cluster_json = request.args.get('cluster') #{id, nodes:[a,b,c], links:[(a,b)], dict: {(a,b):strenght} }
     # cluster_json = request.args.get('cluster') #{[nodes], [links(a,b)]}
 
+    properties = []
+    targets = []
     if True:
-        targets = []
+
         for json_item in datasets_properties:
             row = ast.literal_eval(json_item)
             dict_graph = None
@@ -3122,15 +3086,15 @@ def datasetLinkingClusterDetails3():
 
     # print 'after', type(cluster_json)
     cluster = ast.literal_eval(cluster_json)
-    print '\n'
-    print cluster['id']
-    # print properties
-    print cluster['nodes']
-    print cluster['links']
-    print cluster['dict']
+    # print '\n'
+    print "\n\t>>> CLUSTER ID:", cluster['id']
+    print "\t>>> PROPERTIES:", properties
+    # print cluster['nodes']
+    # print cluster['links']
+    # print cluster['dict']
 
     response = Clt.cluster_values_plus(research_question, cluster['nodes'], targets, distinct_values=(distinctValues=='yes'))
-    print response
+    # print response
     if response['result'] and len(response['result']) > 1:
         # print response['result']
         header = response['result'][0][:-1]
@@ -3176,7 +3140,7 @@ def datasetLinkingClusterDetails3():
                 elif (node2, node1) in cluster['links']:
                     links += [{"source": n['id'], "target": nodes[-1]['id'], "value": 4, "distance": 150, "strenght": max(dict[(node2, node1)])}]
 
-        print links
+        # print links
         obj_metrics = plots.metric(cluster['links'])
         message = obj_metrics['message'].replace('\n','</br>')
 
@@ -3209,7 +3173,7 @@ def datasetLinkingClusterDetails3():
                 print 'Missing confidence value, set to 1.'
                 confidence = 1
             plot_graph = {'id': cluster['id'], 'nodes': nodes, 'links': links, 'metrics': message, 'decision': obj_metrics['decision'], 'confidence':round(confidence,2), 'messageConf': messageConf}
-            print plot_graph
+            # print plot_graph
 
         message = "Have a look at the result in the table below"
         return json.dumps({'message': message,
@@ -3409,6 +3373,51 @@ def exportAlignment():
 
         elif mode == 'vis':
             result = Ex.visualise(graphs, PLOTS_FOLDER, {'user': user, 'password': psswd })
+
+        elif mode == 'all':
+
+            fileName = Ut.get_uri_local_name(graph_uri)
+            directory = os.path.join(Svr.SRC_DIR, "app", "static", "data", fileName)
+            # CREATE THE DIRECTORY IF IT DOES NOT EXIST
+            if os.path.exists(directory) is False:
+                os.makedirs(directory)
+
+            # DOWNLOAD THE FILE
+            result = Ex.export_alignment_all(graph_uri, directory)
+            result['fileName'] = fileName
+
+                # REMOVE THE DIRECTORY
+            rmtree(directory)
+
+        # print "\n after:", result
+
+    except Exception as error:
+        print "AN ERROR OCCURRED: ", error
+        result = json.dumps({'message':str(error.message), 'result':None})
+
+    return json.dumps(result)
+
+
+@app.route('/exportAlignmentOld', methods=['GET'])
+def exportAlignmentOld():
+
+    graph_uri = request.args.get('graph_uri', '')
+    mode = request.args.get('mode', 'flat')
+    graphs = request.args.getlist('graphs[]')
+    user = request.args.get('name', '')
+    psswd = request.args.get('code', '')
+    result = None
+
+    try:
+        # print "\n before:", graph_uri
+        if mode == 'flat':
+            result = Ex.export_flat_alignment(graph_uri)
+
+        elif mode == 'md':
+            result = Ex.export_flat_alignment_and_metadata(graph_uri)
+
+        elif mode == 'vis':
+            result = Ex.visualise(graphs, PLOTS_FOLDER, {'user': user, 'password': psswd })
         elif mode == 'all':
             result = Ex.export_alignment_all(graph_uri)
         # print "\n after:", result
@@ -3418,7 +3427,6 @@ def exportAlignment():
         result = json.dumps({'message':str(error.message), 'result':None})
 
     return json.dumps(result)
-
 
 @app.route('/deleteLinkset')
 def deleteLinkset():
@@ -3641,15 +3649,15 @@ def convertCSVToRDF():
     entity_type = request.args.get('entity_type', '')
     rdftype = map(int, request.args.getlist('rdftype[]'))
     subject_id = request.args.get('subject_id', None)
-    print subject_id
+    # print subject_id
 
     # print subject_id, rdftype
 
     converter = CSV.CSV(database=database, is_trig=True, file_to_convert=filePath,
-            separator=separator, entity_type=entity_type,
-            rdftype=rdftype if rdftype != [] else None,
-            subject_id = int(subject_id) if subject_id != '' else None,
-            field_metadata=None)
+                        separator=separator, entity_type=entity_type,
+                        rdftype=rdftype if rdftype != [] else None,
+                        subject_id = int(subject_id) if subject_id != '' else None,
+                        field_metadata=None, activated=True)
 
     return jsonify({'batch': converter.bat_file, 'data': converter.outputPath, 'schema': converter.outputMetaPath})
 
@@ -3690,7 +3698,8 @@ def viewRQuestionFile():
 def viewSampleRDFFile():
     print "VIEW RDF SAMPLE FILE"
     filePath = request.args.get('file', '')
-    return json.dumps(CSV.CSV.view_data(filePath))
+    sample = json.dumps(CSV.CSV.view_data(filePath))
+    return sample
 
 
 @app.route('/headerExtractor', methods=['POST'])
@@ -3703,13 +3712,14 @@ def headerExtractor():
     header = ""
     for i in range(len(header_list)):
         header += "<option>{}</option>".format(header_list[i])
-    # print header
+    print header
     return header
 
 
 @app.route('/loadGraph')
 def loadGraph():
     batch_file = request.args.get('batch_file', '')
+    print "PRINT LOADING THE {}".format(batch_file)
     return json.dumps(Ut.batch_load(batch_file))
 
 

@@ -394,11 +394,97 @@ function modeAdmin(val)
    $('#admin_buttons_col').show();
 }
 
+function TripleStoreAdminClick()
+{
+    $("#divAdmin").show();
+    $("#triplestore_admin_col").show();
+    $("#triplestore_admin_col").show();
+    $("#deletion_dataset_col").hide();
+    $("#deletion_idea_row").hide();
+
+//   $('#button_select_RQ_col').html('Loading...');
+//   // get research questions
+//   $.get('/getrquestions',
+//          data = {'template': 'list_dropdown.html',
+//                  'function': 'rqAdminClick(this,"idea")'},
+//          function(data)
+//   {
+//     //load the results rendered as a button into a div-col
+//     $('#button_select_RQ_col').html(data);
+//   });
+//
+//  var target = 'deletion_idea_selected_RQ';
+//  setAttr(target,'uri','');
+//  setAttr(target,'label','');
+//  setAttr(target,'style','background-color:none');
+//  $('#'+target).html('');
+
+}
+
+function triplestoreAdminExecuteButtonClick()
+{
+    var option = getSelectValues(document.getElementById('triplestoreAdmin_list'));
+    chronoReset();
+    $('#triplestoreAdmin_message_col').html(addNote("Running selected option!",cl='warning'));
+    loadingGif(document.getElementById('triplestoreAdmin_message_col'), 2);
+    $('#triplestoreAdmin_result').val('');
+
+    if (option.length > 0)
+    {
+        $.get('/executeTriplestoreAdmin',
+              data={'option':  option[0],
+                    'input':   document.getElementById('triplestoreAdmin_input').value},
+              function(data)
+        {
+            //var obj = JSON.parse(data);
+            $('#triplestoreAdmin_result').val(data);
+            $('#triplestoreAdmin_message_col').html(addNote("See results in the panel below!",cl='success'));
+            loadingGif(document.getElementById('triplestoreAdmin_message_col'), 2, show = false);
+        });
+    }
+    else
+    {
+        $('#triplestoreAdmin_message_col').html(addNote(missing_feature));
+        loadingGif(document.getElementById('triplestoreAdmin_message_col'), 2, show = false);
+    }
+}
+
+function triplestoreQueryExecuteButtonClick()
+{
+    var option = getSelectValues(document.getElementById('triplestoreQuery_list'));
+    chronoReset();
+    $('#triplestoreQuery_message_col').html(addNote("Running selected option!",cl='warning'));
+    loadingGif(document.getElementById('triplestoreQuery_message_col'), 2);
+    $('#triplestoreQuery_result').val('');
+
+    if (option.length > 0)
+    {
+        $.get('/executeTriplestoreQuery',
+              data={'option':  option[0],
+                    'input':   document.getElementById('triplestoreQuery_input').value,
+                    'input2':   document.getElementById('triplestoreQuery_input2').value},
+              function(data)
+        {
+            //var obj = JSON.parse(data);
+            $('#triplestoreQuery_result').val(data);
+            $('#triplestoreQuery_message_col').html(addNote("See results in the panel below!",cl='success'));
+            loadingGif(document.getElementById('triplestoreQuery_message_col'), 2, show = false);
+        });
+    }
+    else
+    {
+        $('#triplestoreQuery_message_col').html(addNote(missing_feature));
+        loadingGif(document.getElementById('triplestoreQuery_message_col'), 2, show = false);
+    }
+}
+
 function DelRQClick()
 {
     $("#divAdmin").show();
     $("#deletion_dataset_col").show();
     $("#deletion_idea_row").show();
+    $("#triplestore_admin_col").hide();
+    $("#triplestore_admin_col").hide();
 
    $('#button_select_RQ_col').html('Loading...');
    // get research questions
